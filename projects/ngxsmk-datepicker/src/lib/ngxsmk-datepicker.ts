@@ -149,7 +149,7 @@ import { createDateComparator } from './utils/performance.utils';
                     (valueChange)="onTimeChange()"
                     [disabled]="disabled"
                   ></ngxsmk-custom-select>
-                  <ngxsmk-custom-select
+                  <ngxsmk-custom-select *ngIf="!use24hTimeFormat"
                     class="ampm-select"
                     [options]="ampmOptions"
                     [(value)]="isPm"
@@ -180,6 +180,11 @@ export class NgxsmkDatepickerComponent implements OnInit, OnChanges, OnDestroy, 
   @Input() showRanges: boolean = true;
   @Input() showTime: boolean = false;
   @Input() minuteInterval: number = 1;
+  // 24h mode: if true show 00-23 hours and hide AM/PM selector
+  @Input() use24hTimeFormat: boolean = false;
+  // When true (default), popover auto-closes once a full selection is made.
+  // Set to false to keep picker open after selecting a date/time.
+  @Input() autoCloseOnSelect: boolean = true;
   
   // NEW: Holiday Provider Inputs
   @Input() holidayProvider: HolidayProvider | null = null;
@@ -386,8 +391,9 @@ export class NgxsmkDatepickerComponent implements OnInit, OnChanges, OnDestroy, 
     this.onTouched();
     
     // Auto-close popover when a selection is complete
-    if (!this.isInlineMode && val !== null) {
-      if (this.mode === 'single' || (this.mode === 'range' && this.startDate && this.endDate)) {
+    if (this.autoCloseOnSelect && !this.isInlineMode && val !== null) {
+      const selectionComplete = this.mode === 'single' || (this.mode === 'range' && this.startDate && this.endDate) || (this.mode === 'multiple');
+      if (selectionComplete) {
         this.isCalendarOpen = false;
       }
     }
@@ -524,13 +530,19 @@ export class NgxsmkDatepickerComponent implements OnInit, OnChanges, OnDestroy, 
   }
 
   private get24Hour(displayHour: number, isPm: boolean): number {
+    if (this.use24hTimeFormat) return displayHour; // already 0-23
     return get24Hour(displayHour, isPm);
   }
 
   private update12HourState(fullHour: number): void {
-    const state = update12HourState(fullHour);
-    this.isPm = state.isPm;
-    this.currentDisplayHour = state.displayHour;
+    if (this.use24hTimeFormat) {
+      this.currentDisplayHour = fullHour;
+      this.isPm = fullHour >= 12;
+    } else {
+      const state = update12HourState(fullHour);
+      this.isPm = state.isPm;
+      this.currentDisplayHour = state.displayHour;
+    }
   }
 
   private applyCurrentTime(date: Date): Date {
@@ -610,8 +622,16 @@ export class NgxsmkDatepickerComponent implements OnInit, OnChanges, OnDestroy, 
   }
 
   private generateTimeOptions(): void {
-    const { hourOptions, minuteOptions } = generateTimeOptions(this.minuteInterval);
-    this.hourOptions = hourOptions;
+    if (this.use24hTimeFormat) {
+      this.hourOptions = Array.from({length: 24}).map((_, i) => ({
+        label: i.toString().padStart(2, '0'),
+        value: i
+      }));
+    } else {
+      const { hourOptions } = generateTimeOptions(this.minuteInterval); // 1-12
+      this.hourOptions = hourOptions;
+    }
+    const { minuteOptions } = generateTimeOptions(this.minuteInterval);
     this.minuteOptions = minuteOptions;
   }
 
