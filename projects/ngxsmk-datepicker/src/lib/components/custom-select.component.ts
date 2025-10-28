@@ -1,4 +1,4 @@
-import { Component, ElementRef, EventEmitter, HostListener, inject, Input, Output } from '@angular/core';
+import { ChangeDetectorRef, Component, ElementRef, EventEmitter, HostListener, inject, Input, Output, QueryList, SimpleChanges, ViewChild, ViewChildren } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 @Component({
@@ -15,10 +15,12 @@ import { CommonModule } from '@angular/common';
         </svg>
       </button>
       @if (isOpen) {
-        <div class="ngxsmk-options-panel">
+        <div #panel class="ngxsmk-options-panel">
           <ul>
             @for (option of options; track option.value) {
-              <li [class.selected]="option.value === value" (click)="selectOption(option); $event.stopPropagation()">
+              <li #opt 
+                [class.selected]="option.value === value" 
+                (click)="selectOption(option); $event.stopPropagation()">
                 {{ option.label }}
               </li>
             }
@@ -61,13 +63,57 @@ export class CustomSelectComponent {
   @Input() value: any;
   @Input() disabled: boolean = false;
   @Output() valueChange = new EventEmitter<any>();
+  @ViewChild('panel') panelRef?: ElementRef<HTMLDivElement>;
+  @ViewChildren('opt') optionEls!: QueryList<ElementRef<HTMLLIElement>>;
   public isOpen = false;
+
+  constructor(private cdr: ChangeDetectorRef) {}
 
   private readonly elementRef: ElementRef = inject(ElementRef);
 
   @HostListener('document:click', ['$event'])
+
   onDocumentClick(event: MouseEvent): void {
     if (!this.elementRef.nativeElement.contains(event.target)) this.isOpen = false;
+  }
+
+  ngAfterViewInit() {
+    // If the list re-renders (e.g., options arrive async), re-center.
+    this.optionEls.changes.subscribe(() => {
+      if (this.isOpen) this.centerSelected();
+    });
+  }
+
+  ngOnChanges(ch: SimpleChanges) {
+    // When opening, wait for the DOM to actually render, then center.
+    if (ch['isOpen']?.currentValue === true) {
+      // Flush this CD cycle to ensure @if/@for content is in the DOM
+      this.cdr.detectChanges();
+      // Queue to the next macro-task to be 100% sure
+      setTimeout(() => this.centerSelected());
+    }
+
+    // Also recenter if the selected value changes while open
+    if (this.isOpen && ch['value'] && !ch['value'].firstChange) {
+      // allow DOM/class to update first
+      setTimeout(() => this.centerSelected());
+    }
+  }
+
+  private centerSelected() {
+    const panel = this.panelRef?.nativeElement;
+    if (!panel) return;
+
+    // Find the selected LI within the current list
+    const selected = panel.querySelector('li.selected') as HTMLElement | null;
+    if (!selected) return;
+
+    // Precise centering
+    const target = selected.offsetTop - (panel.clientHeight / 2 - selected.offsetHeight / 2);
+    panel.scrollTo({ top: Math.max(0, target), behavior: 'auto' });
+
+    // Optional: focus panel for keyboard nav
+    // panel.focus();
   }
 
   get displayValue(): string {
